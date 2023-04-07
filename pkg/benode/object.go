@@ -1,8 +1,13 @@
 package benode
 
-import "errors"
+import (
+	"errors"
+	"io"
+	"playground/utils"
+)
 
 const (
+	// BType is the type of a BObject
 	BSTR  BType = iota
 	BINT  BType = iota
 	BLIST BType = iota
@@ -13,6 +18,7 @@ type (
 	BType int
 	BData any
 
+	// BObject is the basic element in Benode protocol
 	BObject struct {
 		Type BType
 		Data BData
@@ -49,4 +55,19 @@ func (o *BObject) String() (string, error) {
 		return "", ErrTyp
 	}
 	return o.Data.(string), nil
+}
+
+// Bencode write BObject to writer and return len
+func (o *BObject) Bencode(writer io.Writer) int {
+	wlen := 0
+
+	switch o.Type {
+	case BSTR:
+		str, _ := o.String()
+		l, _ := writer.Write(utils.Str2Bytes(str))
+		wlen += l
+	case BINT:
+
+	}
+	panic("todo")
 }
