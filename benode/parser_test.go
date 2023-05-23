@@ -2,7 +2,6 @@ package benode
 
 import (
 	"bufio"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -17,7 +16,7 @@ func TestDecode(t *testing.T) {
 	buff := `d4:1234i5678eli8909e1:aedi2345e3:abcee`
 
 	rd := bufio.NewReader(strings.NewReader(buff))
-	var res NodeType = _testCtx.MustScan(rd)
+	var res Benode = _testCtx.MustScan(rd)
 	assert.NotNil(t, res)
 	assert.Nil(t, _testCtx.Err())
 }
@@ -30,7 +29,19 @@ func TestString(t *testing.T) {
 	res := _testCtx.ScanString(rd)
 	assert.Nil(t, _testCtx.Err())
 	assert.Equal(t, 4, len(*res.data))
-	fmt.Printf("res.data: %v\n", *res.data)
+	{
+		var out string
+		err := res.Decode(&out)
+		assert.Nil(t, err)
+		assert.Equal(t, "1234", out)
+
+	}
+	{
+		var out1 float64
+		err := res.Decode(&out1)
+		assert.Nil(t, err)
+		assert.Equal(t, float64(1234), out1)
+	}
 
 }
 
@@ -41,23 +52,45 @@ func TestInt(t *testing.T) {
 	rd := bufio.NewReader(strings.NewReader(buff))
 	res := _testCtx.ScanInt(rd)
 	assert.Nil(t, _testCtx.Err())
-	assert.Equal(t, int64(1234), *res.data)
-	fmt.Printf("res.data: %v\n", *res.data)
+
+	var out int64
+	err := res.Decode(&out)
+	assert.Nil(t, err)
+	assert.Equal(t, int64(1234), out)
 }
 
 func TestList(t *testing.T) {
+
+	input := `li1234e4:abcde`
+	rd := bufio.NewReader(strings.NewReader(input))
+	res := _testCtx.ScanList(rd)
+	assert.Nil(t, _testCtx.Err())
+	assert.Equal(t, 2, len(res.data))
+
+	{
+		var out []string
+		err := res.Decode(&out)
+		assert.Nil(t, err)
+		assert.Equal(t, 2, len(out))
+
+	}
+}
+func TestList1(t *testing.T) {
 
 	input := `li1234el4:abcdee`
 	rd := bufio.NewReader(strings.NewReader(input))
 	res := _testCtx.ScanList(rd)
 	assert.Nil(t, _testCtx.Err())
 	assert.Equal(t, 2, len(res.data))
-	assert.IsType(t, &ListNode{}, res.data[1])
-	r := (res.data[1]).(*ListNode)
-	assert.IsType(t, &StringNode{}, r.data[0])
-	s := (r.data[0]).(*StringNode)
-	assert.Equal(t, "abcd", *s.data)
-	assert.IsType(t, &IntNode{}, res.data[0])
+
+	{
+		var out []any
+		err := res.Decode(&out)
+		assert.Nil(t, err)
+		assert.Equal(t, 2, len(out))
+		assert.IsType(t, []any{}, out[1])
+
+	}
 }
 
 func TestDict(t *testing.T) {

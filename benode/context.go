@@ -11,8 +11,9 @@ var (
 )
 
 type ParseContext interface {
-	Scan(*bufio.Reader) NodeType
-	MustScan(rd *bufio.Reader) NodeType
+	Scan(*bufio.Reader) Benode
+	MustScan(rd *bufio.Reader) Benode
+
 	Err() error
 	Clean()
 }
@@ -115,7 +116,7 @@ func (impl *NodeContextImpl) ScanDict(rd *bufio.Reader) *DictNode {
 	if next != DictStartSign {
 		impl.addErr(fmt.Errorf("DictNode: invalid start sign"))
 	}
-	data := make(map[NodeType]NodeType, 0)
+	data := make(map[Benode]Benode, 0)
 	for {
 		if impl.Err() != nil {
 			break
@@ -142,7 +143,7 @@ func (impl *NodeContextImpl) ScanList(rd *bufio.Reader) *ListNode {
 	if next != ListStartSign {
 		impl.addErr(fmt.Errorf("ListNode: invalid start sign"))
 	}
-	var data []NodeType
+	var data []Benode
 	for {
 		if impl.Err() != nil {
 			break
@@ -172,7 +173,7 @@ func (impl *NodeContextImpl) addErr(err error) {
 	}
 }
 
-func (impl *NodeContextImpl) Scan(rd *bufio.Reader) (res NodeType) {
+func (impl *NodeContextImpl) Scan(rd *bufio.Reader) (res Benode) {
 	if impl.Err() != nil {
 		return nil
 	}
@@ -197,10 +198,62 @@ func (impl *NodeContextImpl) Clean() {
 	impl.err = nil
 }
 
-func (impl *NodeContextImpl) MustScan(rd *bufio.Reader) (res NodeType) {
+func (impl *NodeContextImpl) MustScan(rd *bufio.Reader) (res Benode) {
 	res = impl.Scan(rd)
 	if res == nil {
 		impl.addErr(fmt.Errorf("Context: not  benode"))
 	}
 	return res
 }
+
+func (impl *NodeContextImpl) Unmarshal(rd *bufio.Reader, res any) {
+	// resVal := reflect.ValueOf(res)
+}
+
+// func (impl *NodeContextImpl) decode(nodeVal reflect.Value, resTyp reflect.Type) reflect.Value {
+// 	if impl.Err() != nil {
+// 		return reflect.Value{}
+// 	}
+
+// 	switch resTyp.Kind() {
+// 	case reflect.Pointer:
+// 		return impl.decode(nodeVal, resTyp.Elem())
+// 	case reflect.Array, reflect.Slice:
+// 		// only for ListNode
+// 		if !(nodeVal.Kind() == reflect.Slice) {
+// 			impl.addErr(bTypErr)
+// 			return reflect.Value{}
+// 		}
+// 		res := reflect.New(resTyp)
+// 		for i := 0; i < nodeVal.Len(); i++ {
+// 			res = reflect.AppendSlice(res, impl.decode(nodeVal.Index(i), resTyp.Elem()))
+// 		}
+// 		return res
+// 	case reflect.Map:
+// 		// only for DictNode
+// 		if !(nodeVal.Kind() == reflect.Map) {
+// 			impl.addErr(bTypErr)
+// 			return reflect.Value{}
+// 		}
+
+// 	case reflect.Struct:
+// 		// only for DictNode
+// 	case reflect.String:
+// 		// only for StringNode
+// 		if !(nodeVal.Kind() == reflect.String) {
+// 			impl.addErr(bTypErr)
+// 			return reflect.Value{}
+// 		}
+// 		return nodeVal
+// 	case reflect.Int64:
+// 		// only for IntNode
+// 		if !(nodeVal.Kind() == reflect.Int64) {
+// 			impl.addErr(bTypErr)
+// 			return reflect.Value{}
+// 		}
+// 		return nodeVal
+// 	case reflect.Interface:
+// 		return nodeVal
+// 	default:
+// 	}
+// }
