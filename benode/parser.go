@@ -1,74 +1,114 @@
 package benode
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
-
-	"tutorial/bt_demo/utils"
 )
 
 type NodeType interface {
-	StringNode
-
-	Decode(io.Reader) error
-	Encode(io.Writer) error
+	Encode(io.Writer, chan<- error)
+	// Decode()
 }
 
 var (
-	bErr chan error
+	_ NodeType = (*StringNode)(nil)
+	_ NodeType = (*IntNode)(nil)
+	_ NodeType = (*ListNode)(nil)
+	_ NodeType = (*DictNode)(nil)
 
 	bIOErr error = errors.New("read/write error")
 )
 
-type NodeFactory struct{}
+const (
+	DictStartSign = 'd'
+	ListStartSign = 'l'
+	IntStartSign  = 'i'
+	EndSign       = 'e'
+	SplitSign     = ':'
+)
+
+type DictNode struct {
+	data map[NodeType]NodeType
+}
+
+func (e *DictNode) Encode(wd io.Writer, ch chan<- error) {
+	if _, err := wd.Write([]byte{DictStartSign}); err != nil {
+		ch <- fmt.Errorf("encode: %w", err)
+	}
+	for k, v := range e.data {
+		k.Encode(wd, ch)
+		v.Encode(wd, ch)
+	}
+	if _, err := wd.Write([]byte{EndSign}); err != nil {
+		ch <- fmt.Errorf("encode: %w", err)
+	}
+}
+
+type ListNode struct {
+	data []NodeType
+}
+
+func (e *ListNode) Encode(wd io.Writer, ch chan<- error) {
+	if _, err := wd.Write([]byte{ListStartSign}); err != nil {
+		ch <- fmt.Errorf("ListNode encode: %w", err)
+	}
+	for _, v := range e.data {
+		v.Encode(wd, ch)
+	}
+	if _, err := wd.Write([]byte{EndSign}); err != nil {
+		ch <- fmt.Errorf("ListNode encode: %w", err)
+	}
+}
+
+func ToGenericList(n ...NodeType) []NodeType {
+	return n
+}
+
+type IntNode struct {
+	data *int64
+}
+
+func (e *IntNode) Encode(wd io.Writer, ch chan<- error) {
+	if e.data == nil {
+		return
+	}
+	if _, err := wd.Write([]byte(fmt.Sprintf("i%de", *e.data))); err != nil {
+		ch <- fmt.Errorf("IntNode encode: %w", err)
+	}
+}
 
 type StringNode struct {
 	data *string
 }
 
-func (e *StringNode) Encode(wd io.Writer) {
+func (e *StringNode) Encode(wd io.Writer, ch chan<- error) {
 	if e.data == nil {
-	}
-	if _, err := wd.Write([]byte(fmt.Sprintf("%d:%s", len(*e.data), *e.data))); err != nil {
-		bErr <- fmt.Errorf("encode: %w", err)
-	}
-}
-
-func (e *StringNode) Decode(rd io.Reader) {
-	res, next := readInt(rd)
-	if next != ':' {
-		bErr <- fmt.Errorf("invalid string node split sign")
 		return
 	}
-	b := readSlice(rd, res)
-	e.data = utils.Of(string(b))
+	if _, err := wd.Write([]byte(fmt.Sprintf("%d:%s", len(*e.data), *e.data))); err != nil {
+		ch <- fmt.Errorf("encode: %w", err)
+	}
 }
 
-func readSlice(rd io.Reader, l int64) []byte {
-	b := make([]byte, l)
-	if _, err := rd.Read(b); err != nil {
-		bErr <- fmt.Errorf("readSlice: %w", err)
+func readSlice(rd *bufio.Reader, l int) (b []byte, err error) {
+	b = make([]byte, l)
+	var n int
+	if n, err = rd.Read(b); err != nil {
+		return nil, fmt.Errorf("readSlice: %w", bIOErr)
 	}
-	return b
+	if n < l {
+		return nil, fmt.Errorf("readSlice: EOF")
+	}
+	return b, nil
 }
 
-func readByte(rd io.Reader) byte {
-	b := make([]byte, 1)
-	if _, err := rd.Read(b); err != nil {
-		bErr <- fmt.Errorf("readByte: %w", err)
+func peekByte(rd *bufio.Reader) (byte, error) {
+	var b []byte
+	var err error
+	if b, err = rd.Peek(1); err != nil {
+		return 0, fmt.Errorf("peakByte: %w", bIOErr)
 	}
-	return b[0]
-}
-
-// parseInt parses an integer from the reader
-func readInt(rd io.Reader) (res int64, next byte) {
-	for {
-		next = readByte(rd)
-		if next < '0' && next > '9' {
-			break
-		}
-		res = res*10 + int64(next-'0')
-	}
-	return res, next
+	return b[0], nil
 }
