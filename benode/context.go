@@ -2,7 +2,11 @@ package benode
 
 import (
 	"bufio"
+	"bytes"
+	"crypto/sha1"
+	"errors"
 	"fmt"
+	"io"
 	"tutorial/bt_demo/utils"
 )
 
@@ -12,7 +16,10 @@ var (
 
 type ParseContext interface {
 	Scan(*bufio.Reader) Benode
-	MustScan(rd *bufio.Reader) Benode
+	MustScan(*bufio.Reader) Benode
+	Marhshal(any) Benode
+	Unmarshal(*bufio.Reader, ...any)
+	CalSHA(any) [utils.SHALEN]byte
 
 	Err() error
 	Clean()
@@ -206,54 +213,33 @@ func (impl *NodeContextImpl) MustScan(rd *bufio.Reader) (res Benode) {
 	return res
 }
 
-func (impl *NodeContextImpl) Unmarshal(rd *bufio.Reader, res any) {
-	// resVal := reflect.ValueOf(res)
+func (impl *NodeContextImpl) Marhshal(src any) (res Benode) {
+	panic("todo")
 }
 
-// func (impl *NodeContextImpl) decode(nodeVal reflect.Value, resTyp reflect.Type) reflect.Value {
-// 	if impl.Err() != nil {
-// 		return reflect.Value{}
-// 	}
+func (impl *NodeContextImpl) Unmarshal(rd *bufio.Reader, resList ...any) {
+	for i := 0; i < len(resList); i++ {
+		node := impl.MustScan(rd)
+		if impl.Err() != nil {
+			if errors.Is(impl.Err(), io.EOF) {
+				impl.Clean()
+			}
+			break
+		}
+		if err := node.Decode(&resList[i]); err != nil {
+			impl.addErr(fmt.Errorf("Decode: %w", err))
+		}
+	}
+}
 
-// 	switch resTyp.Kind() {
-// 	case reflect.Pointer:
-// 		return impl.decode(nodeVal, resTyp.Elem())
-// 	case reflect.Array, reflect.Slice:
-// 		// only for ListNode
-// 		if !(nodeVal.Kind() == reflect.Slice) {
-// 			impl.addErr(bTypErr)
-// 			return reflect.Value{}
-// 		}
-// 		res := reflect.New(resTyp)
-// 		for i := 0; i < nodeVal.Len(); i++ {
-// 			res = reflect.AppendSlice(res, impl.decode(nodeVal.Index(i), resTyp.Elem()))
-// 		}
-// 		return res
-// 	case reflect.Map:
-// 		// only for DictNode
-// 		if !(nodeVal.Kind() == reflect.Map) {
-// 			impl.addErr(bTypErr)
-// 			return reflect.Value{}
-// 		}
-
-// 	case reflect.Struct:
-// 		// only for DictNode
-// 	case reflect.String:
-// 		// only for StringNode
-// 		if !(nodeVal.Kind() == reflect.String) {
-// 			impl.addErr(bTypErr)
-// 			return reflect.Value{}
-// 		}
-// 		return nodeVal
-// 	case reflect.Int64:
-// 		// only for IntNode
-// 		if !(nodeVal.Kind() == reflect.Int64) {
-// 			impl.addErr(bTypErr)
-// 			return reflect.Value{}
-// 		}
-// 		return nodeVal
-// 	case reflect.Interface:
-// 		return nodeVal
-// 	default:
-// 	}
-// }
+func (impl *NodeContextImpl) CalSHA(res any) [utils.SHALEN]byte {
+	if impl.Err() != nil {
+		return [utils.SHALEN]byte{}
+	}
+	var buf bytes.Buffer
+	node := impl.Marhshal(res)
+	if err := node.Encode(&buf); err != nil {
+		impl.addErr(fmt.Errorf("CalSHA: %w", err))
+	}
+	return sha1.Sum(buf.Bytes())
+}
