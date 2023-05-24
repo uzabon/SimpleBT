@@ -94,14 +94,33 @@ func TestList1(t *testing.T) {
 }
 
 func TestDict(t *testing.T) {
-
-	input := `ddi1234e2:qqel4:abcdee`
-	rd := bufio.NewReader(strings.NewReader(input))
-	res := _testCtx.ScanDict(rd)
-	assert.Nil(t, _testCtx.Err())
-	assert.Equal(t, 1, len(res.data))
-	for k, v := range res.data {
-		assert.IsType(t, &DictNode{}, k)
-		assert.IsType(t, &ListNode{}, v)
+	{
+		input := `ddi1234e2:qqel4:abcdee`
+		rd := bufio.NewReader(strings.NewReader(input))
+		res := _testCtx.ScanDict(rd)
+		assert.Nil(t, _testCtx.Err())
+		assert.Equal(t, 1, len(res.data))
+		for k, v := range res.data {
+			assert.IsType(t, &DictNode{}, k)
+			assert.IsType(t, &ListNode{}, v)
+		}
+	}
+	{
+		input := `d1:ii1234e1:q2:qq1:ali1ei2ei3eee`
+		type test struct {
+			A int     `benode:"i"`
+			B string  `benode:"q"`
+			C []int64 `benode:"a"`
+		}
+		rd := bufio.NewReader(strings.NewReader(input))
+		res := _testCtx.ScanDict(rd)
+		assert.Nil(t, _testCtx.Err())
+		assert.Equal(t, 3, len(res.data))
+		var out test
+		err := res.Decode(&out)
+		assert.Nil(t, err)
+		assert.Equal(t, 1234, out.A)
+		assert.Equal(t, "qq", out.B)
+		assert.Equal(t, []int64{1, 2, 3}, out.C)
 	}
 }

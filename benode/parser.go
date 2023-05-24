@@ -32,6 +32,8 @@ const (
 	IntStartSign  = 'i'
 	EndSign       = 'e'
 	SplitSign     = ':'
+
+	BenodeTag = "benode"
 )
 
 type DictNode struct {
@@ -57,10 +59,60 @@ func (e *DictNode) Encode(wd io.Writer) (err error) {
 }
 
 func (e *DictNode) Decode(res any) (err error) {
-	panic("todo")
+	resVal := reflect.ValueOf(res)
+	return e.DecodeValue(resVal)
 }
 func (e *DictNode) DecodeValue(resVal reflect.Value) (err error) {
-	panic("todo")
+	resVal, _ = unwarpPtr(resVal)
+	resTyp := resVal.Type()
+	var newVal reflect.Value
+
+	switch resTyp.Kind() {
+	case reflect.Map, reflect.Interface:
+		if resTyp.Kind() == reflect.Map {
+			newVal = reflect.MakeMapWithSize(resTyp, len(e.data))
+		} else {
+			newVal = reflect.MakeMapWithSize(reflect.MapOf(resTyp, resTyp), len(e.data))
+		}
+		for k, v := range e.data {
+			kVal := reflect.New(resTyp.Key()).Elem()
+			vVal := reflect.New(resTyp.Elem()).Elem()
+
+			if err = k.DecodeValue(kVal); err != nil {
+				return err
+			}
+			if err = v.DecodeValue(vVal); err != nil {
+				return err
+			}
+
+			newVal.SetMapIndex(kVal, vVal)
+		}
+	case reflect.Struct:
+		strMap := make(map[string]int, resTyp.NumField())
+		for i := 0; i < resTyp.NumField(); i++ {
+			elemTag := resTyp.Field(i).Tag.Get(BenodeTag)
+			strMap[elemTag] = i
+		}
+
+		newVal = reflect.New(resTyp).Elem()
+		for k, v := range e.data {
+			var kData string
+			if err = k.Decode(&kData); err != nil {
+				return err
+			}
+			if idx, ok := strMap[kData]; ok {
+				vVal := newVal.Field(idx)
+				if err = v.DecodeValue(vVal); err != nil {
+					return err
+				}
+				newVal.Field(idx).Set(vVal)
+			}
+		}
+	default:
+		return bDataErr
+	}
+	resVal.Set(newVal)
+	return nil
 }
 
 type ListNode struct {
