@@ -6,13 +6,15 @@ import (
 	"io"
 	"reflect"
 	"strconv"
+	"tutorial/bt_demo/utils"
 )
 
 type Benode interface {
-	Encode(io.Writer) error
+	Write(io.Writer) error
+	EncodeValue(srcVal reflect.Value) (err error)
+	Encode(any) error
 	Decode(any) error
 	DecodeValue(resVal reflect.Value) (err error)
-	// Decode()
 }
 
 var (
@@ -36,19 +38,40 @@ const (
 	BenodeTag = "benode"
 )
 
+func newBenode(srcVal reflect.Value) (res Benode, err error) {
+	srcVal, _ = unwarpPtr(srcVal)
+
+	switch srcVal.Kind() {
+	case reflect.Map, reflect.Struct:
+		res = &DictNode{}
+	case reflect.Slice, reflect.Array:
+		res = &ListNode{}
+	case reflect.Int, reflect.Int64:
+		res = &IntNode{}
+	case reflect.String, reflect.Float64, reflect.Float32:
+		res = &StringNode{}
+	default:
+		return nil, fmt.Errorf("%w: get %v", bTypErr, srcVal.Type())
+	}
+	if err := res.EncodeValue(srcVal); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
 type DictNode struct {
 	data map[Benode]Benode
 }
 
-func (e *DictNode) Encode(wd io.Writer) (err error) {
+func (e *DictNode) Write(wd io.Writer) (err error) {
 	if _, err = wd.Write([]byte{DictStartSign}); err != nil {
 		return fmt.Errorf("encode: %w", err)
 	}
 	for k, v := range e.data {
-		if err = k.Encode(wd); err != nil {
+		if err = k.Write(wd); err != nil {
 			return err
 		}
-		if err = v.Encode(wd); err != nil {
+		if err = v.Write(wd); err != nil {
 			return err
 		}
 	}
@@ -109,22 +132,63 @@ func (e *DictNode) DecodeValue(resVal reflect.Value) (err error) {
 			}
 		}
 	default:
-		return bDataErr
+		return fmt.Errorf("DictNode parse %v: %w", resTyp, bTypErr)
 	}
 	resVal.Set(newVal)
 	return nil
+}
+
+func (e *DictNode) EncodeValue(srcVal reflect.Value) (err error) {
+	srcVal, _ = unwarpPtr(srcVal)
+	srcTyp := srcVal.Type()
+
+	switch srcTyp.Kind() {
+	case reflect.Map:
+		keysVal := srcVal.MapKeys()
+		e.data = make(map[Benode]Benode, len(keysVal))
+		var knode, vnode Benode
+		for i := 0; i < len(keysVal); i++ {
+			if knode, err = newBenode(keysVal[i]); err != nil {
+				return err
+			}
+			if vnode, err = newBenode(srcVal.MapIndex(keysVal[i])); err != nil {
+				return err
+			}
+			e.data[knode] = vnode
+		}
+	case reflect.Struct:
+		e.data = make(map[Benode]Benode, srcTyp.NumField())
+		var knode, vnode Benode
+		for i := 0; i < srcTyp.NumField(); i++ {
+			field := srcTyp.Field(i)
+			if knode, err = newBenode(reflect.ValueOf(field.Tag.Get(BenodeTag))); err != nil {
+				return err
+			}
+			if vnode, err = newBenode(srcVal.Field(i)); err != nil {
+				return err
+			}
+			e.data[knode] = vnode
+		}
+	default:
+		return fmt.Errorf("%w: DictNode get %v", bTypErr, srcTyp)
+	}
+	return nil
+}
+
+func (e *DictNode) Encode(src any) (err error) {
+	return e.DecodeValue(reflect.ValueOf(src))
 }
 
 type ListNode struct {
 	data []Benode
 }
 
-func (e *ListNode) Encode(wd io.Writer) (err error) {
+func (e *ListNode) Write(wd io.Writer) (err error) {
 	if _, err := wd.Write([]byte{ListStartSign}); err != nil {
 		return fmt.Errorf("ListNode %w: %v", bIOErr, err)
 	}
 	for _, v := range e.data {
-		if err = v.Encode(wd); err != nil {
+		if err = v.Write(wd); err != nil {
 			return err
 		}
 	}
@@ -169,16 +233,40 @@ func (e *ListNode) DecodeValue(resVal reflect.Value) (err error) {
 			newVal.Index(i).Set(elemVal)
 		}
 	default:
-		return bTypErr
+		return fmt.Errorf("ListNode parse %v: %w", resTyp, bTypErr)
 	}
 	resVal.Set(newVal)
 	return nil
+}
+
+func (e *ListNode) Encode(src any) (err error) {
+	return e.DecodeValue(reflect.ValueOf(src))
 }
 
 // ListNode can only decode to array | slice
 func (e *ListNode) Decode(res any) (err error) {
 	resVal := reflect.ValueOf(res)
 	return e.DecodeValue(resVal)
+}
+
+func (e *ListNode) EncodeValue(srcVal reflect.Value) (err error) {
+	srcVal, _ = unwarpPtr(srcVal)
+	srcTyp := srcVal.Type()
+
+	switch srcTyp.Kind() {
+	case reflect.Array, reflect.Slice:
+		e.data = make([]Benode, srcVal.Len())
+		for i := 0; i < srcVal.Len(); i++ {
+			elem, err := newBenode(srcVal.Index(i))
+			if err != nil {
+				return nil
+			}
+			e.data[i] = elem
+		}
+	default:
+		return fmt.Errorf("ListNode get %v: %w", srcTyp, bTypErr)
+	}
+	return nil
 }
 
 func unwarpPtr(resVal reflect.Value) (reflect.Value, int) {
@@ -211,7 +299,7 @@ type IntNode struct {
 	data *int64
 }
 
-func (e *IntNode) Encode(wd io.Writer) error {
+func (e *IntNode) Write(wd io.Writer) error {
 	if e.data == nil {
 		return bDataErr
 	}
@@ -219,6 +307,10 @@ func (e *IntNode) Encode(wd io.Writer) error {
 		return fmt.Errorf("IntNode %w: %v", bIOErr, err)
 	}
 	return nil
+}
+
+func (e *IntNode) Encode(src any) (err error) {
+	return e.DecodeValue(reflect.ValueOf(src))
 }
 
 // IntNode only decode to ...int/ float /string
@@ -249,9 +341,22 @@ func (e *IntNode) DecodeValue(resVal reflect.Value) (err error) {
 	case reflect.Interface:
 		newVal = reflect.ValueOf(*e.data)
 	default:
-		return bTypErr
+		return fmt.Errorf("%w: IntNode parse %v", bTypErr, resTyp)
 	}
 	resVal.Set(newVal)
+	return nil
+}
+
+func (e *IntNode) EncodeValue(srcVal reflect.Value) (err error) {
+	srcVal, _ = unwarpPtr(srcVal)
+	srcTyp := srcVal.Type()
+
+	switch srcTyp.Kind() {
+	case reflect.Int, reflect.Int64:
+		e.data = utils.Of(srcVal.Int())
+	default:
+		return fmt.Errorf("IntNode get %v: %w", srcTyp, bTypErr)
+	}
 	return nil
 }
 
@@ -259,7 +364,7 @@ type StringNode struct {
 	data *string
 }
 
-func (e *StringNode) Encode(wd io.Writer) error {
+func (e *StringNode) Write(wd io.Writer) error {
 	if e.data == nil {
 		return bDataErr
 	}
@@ -269,6 +374,9 @@ func (e *StringNode) Encode(wd io.Writer) error {
 	return nil
 }
 
+func (e *StringNode) Encode(src any) (err error) {
+	return e.DecodeValue(reflect.ValueOf(src))
+}
 func (e *StringNode) DecodeValue(resVal reflect.Value) (err error) {
 	resVal, _ = unwarpPtr(resVal)
 	resTyp := resVal.Type()
@@ -286,15 +394,30 @@ func (e *StringNode) DecodeValue(resVal reflect.Value) (err error) {
 	case reflect.Int64:
 		newData, err := strconv.ParseInt(*e.data, 10, 64)
 		if err != nil {
-			return fmt.Errorf("ParseFloat %w: %v", bDataErr, err)
+			return fmt.Errorf("ParseInt %w: %v", bDataErr, err)
 		}
 		newVal = reflect.ValueOf(newData)
 	case reflect.Interface:
 		newVal = reflect.ValueOf(*e.data)
 	default:
-		return bTypErr
+		return fmt.Errorf("%w: StringNode parse %v", bTypErr, resTyp)
 	}
 	resVal.Set(newVal)
+	return nil
+}
+
+func (e *StringNode) EncodeValue(srcVal reflect.Value) (err error) {
+	srcVal, _ = unwarpPtr(srcVal)
+	srcTyp := srcVal.Type()
+
+	switch srcTyp.Kind() {
+	case reflect.String:
+		e.data = utils.Of(srcVal.String())
+	case reflect.Float32, reflect.Float64:
+		e.data = utils.Of(strconv.FormatFloat(srcVal.Float(), 'e', -1, 64))
+	default:
+		return fmt.Errorf("%w: StringNode get %v", bTypErr, srcTyp)
+	}
 	return nil
 }
 

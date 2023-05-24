@@ -89,8 +89,62 @@ func TestList1(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, 2, len(out))
 		assert.IsType(t, []any{}, out[1])
-
 	}
+}
+
+func TestMarshal(t *testing.T) {
+	{
+		str := `123456`
+		res := _testCtx.Marshal(str)
+		assert.Nil(t, _testCtx.Err())
+		r, ok := res.(*StringNode)
+		assert.True(t, ok)
+		assert.Equal(t, str, *r.data)
+	}
+	{
+		i := 12345
+		res := _testCtx.Marshal(i)
+		assert.Nil(t, _testCtx.Err())
+		r, ok := res.(*IntNode)
+		assert.True(t, ok)
+		assert.Equal(t, int64(i), *r.data)
+	}
+	{
+		l := []string{"aaa", "bbb", "ccc"}
+		res := _testCtx.Marshal(l)
+		assert.Nil(t, _testCtx.Err())
+		r, ok := res.(*ListNode)
+		assert.True(t, ok)
+		assert.Equal(t, len(l), len(r.data))
+	}
+
+	{
+		d1 := map[string]int{
+			"a": 123,
+			"b": 456,
+		}
+		res := _testCtx.Marshal(d1)
+		assert.Nil(t, _testCtx.Err())
+		r, ok := res.(*DictNode)
+		assert.True(t, ok)
+		assert.Equal(t, len(d1), len(r.data))
+	}
+	{
+		type T1 struct {
+			A int      `benode:"aaa"`
+			B []string `benode:"bbb"`
+		}
+		d2 := &T1{
+			A: 4321,
+			B: []string{"a", "b", "c"},
+		}
+		res := _testCtx.Marshal(d2)
+		assert.Nil(t, _testCtx.Err())
+		r, ok := res.(*DictNode)
+		assert.True(t, ok)
+		assert.Equal(t, 2, len(r.data))
+	}
+
 }
 
 func TestDict(t *testing.T) {

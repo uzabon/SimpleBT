@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"tutorial/bt_demo/utils"
 )
 
@@ -17,7 +18,7 @@ var (
 type ParseContext interface {
 	Scan(*bufio.Reader) Benode
 	MustScan(*bufio.Reader) Benode
-	Marhshal(any) Benode
+	Marshal(any) Benode
 	Unmarshal(*bufio.Reader, ...any)
 	CalSHA(any) [utils.SHALEN]byte
 
@@ -27,6 +28,10 @@ type ParseContext interface {
 
 type NodeContextImpl struct {
 	err error
+}
+
+func newNodeContext() ParseContext {
+	return &NodeContextImpl{}
 }
 
 func (impl *NodeContextImpl) readInt(rd *bufio.Reader) (res int64) {
@@ -213,8 +218,16 @@ func (impl *NodeContextImpl) MustScan(rd *bufio.Reader) (res Benode) {
 	return res
 }
 
-func (impl *NodeContextImpl) Marhshal(src any) (res Benode) {
-	panic("todo")
+func (impl *NodeContextImpl) Marshal(src any) (res Benode) {
+	if impl.Err() != nil {
+		return nil
+	}
+	res, err := newBenode(reflect.ValueOf(src))
+	if err != nil {
+		impl.addErr(fmt.Errorf("Marshal: %w", err))
+	}
+
+	return res
 }
 
 func (impl *NodeContextImpl) Unmarshal(rd *bufio.Reader, resList ...any) {
@@ -237,8 +250,8 @@ func (impl *NodeContextImpl) CalSHA(res any) [utils.SHALEN]byte {
 		return [utils.SHALEN]byte{}
 	}
 	var buf bytes.Buffer
-	node := impl.Marhshal(res)
-	if err := node.Encode(&buf); err != nil {
+	node := impl.Marshal(res)
+	if err := node.Write(&buf); err != nil {
 		impl.addErr(fmt.Errorf("CalSHA: %w", err))
 	}
 	return sha1.Sum(buf.Bytes())
