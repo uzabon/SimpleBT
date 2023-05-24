@@ -7,6 +7,6 @@ import (
 )
 
 func LogSource() string {
-	pc, file, line, _ := runtime.Caller(2)
+	pc, file, line, _ := runtime.Caller(1)
 	return fmt.Sprintf("%v#%v-%v", filepath.Base(file), line, runtime.FuncForPC(pc).Name())
 }

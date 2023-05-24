@@ -2,6 +2,9 @@ package benode
 
 import (
 	"bufio"
+	"bytes"
+	"crypto/sha1"
+	"errors"
 	"fmt"
 	"io"
 	"reflect"
@@ -38,7 +41,34 @@ const (
 	BenodeTag = "benode"
 )
 
-func newBenode(srcVal reflect.Value) (res Benode, err error) {
+func CalSHA(node Benode) ([utils.SHALEN]byte, error) {
+	var buf bytes.Buffer
+	if err := node.Write(&buf); err != nil {
+		return [utils.SHALEN]byte{}, err
+	}
+	return sha1.Sum(buf.Bytes()), nil
+}
+
+func Unmarshal[T any](rd *bufio.Reader, res T) error {
+	impl := NewNodeContext()
+	node := impl.Scan(rd)
+	if impl.Err() != nil {
+		if errors.Is(impl.Err(), io.EOF) {
+			impl.Clean()
+		}
+		return impl.Err()
+	}
+	if err := node.Decode(&res); err != nil {
+		return err
+	}
+	return nil
+}
+
+func Marshal[T any](src T) (res Benode, err error) {
+	return marshalValue(reflect.ValueOf(src))
+}
+
+func marshalValue(srcVal reflect.Value) (res Benode, err error) {
 	srcVal, _ = unwarpPtr(srcVal)
 
 	switch srcVal.Kind() {
@@ -91,15 +121,26 @@ func (e *DictNode) DecodeValue(resVal reflect.Value) (err error) {
 	var newVal reflect.Value
 
 	switch resTyp.Kind() {
-	case reflect.Map, reflect.Interface:
-		if resTyp.Kind() == reflect.Map {
-			newVal = reflect.MakeMapWithSize(resTyp, len(e.data))
-		} else {
-			newVal = reflect.MakeMapWithSize(reflect.MapOf(resTyp, resTyp), len(e.data))
-		}
+	case reflect.Map:
+		newVal = reflect.MakeMapWithSize(resTyp, len(e.data))
 		for k, v := range e.data {
 			kVal := reflect.New(resTyp.Key()).Elem()
 			vVal := reflect.New(resTyp.Elem()).Elem()
+
+			if err = k.DecodeValue(kVal); err != nil {
+				return err
+			}
+			if err = v.DecodeValue(vVal); err != nil {
+				return err
+			}
+
+			newVal.SetMapIndex(kVal, vVal)
+		}
+	case reflect.Interface:
+		newVal = reflect.MakeMapWithSize(reflect.MapOf(resTyp, resTyp), len(e.data))
+		for k, v := range e.data {
+			kVal := reflect.New(resTyp).Elem()
+			vVal := reflect.New(resTyp).Elem()
 
 			if err = k.DecodeValue(kVal); err != nil {
 				return err
@@ -148,10 +189,10 @@ func (e *DictNode) EncodeValue(srcVal reflect.Value) (err error) {
 		e.data = make(map[Benode]Benode, len(keysVal))
 		var knode, vnode Benode
 		for i := 0; i < len(keysVal); i++ {
-			if knode, err = newBenode(keysVal[i]); err != nil {
+			if knode, err = marshalValue(keysVal[i]); err != nil {
 				return err
 			}
-			if vnode, err = newBenode(srcVal.MapIndex(keysVal[i])); err != nil {
+			if vnode, err = marshalValue(srcVal.MapIndex(keysVal[i])); err != nil {
 				return err
 			}
 			e.data[knode] = vnode
@@ -161,10 +202,10 @@ func (e *DictNode) EncodeValue(srcVal reflect.Value) (err error) {
 		var knode, vnode Benode
 		for i := 0; i < srcTyp.NumField(); i++ {
 			field := srcTyp.Field(i)
-			if knode, err = newBenode(reflect.ValueOf(field.Tag.Get(BenodeTag))); err != nil {
+			if knode, err = marshalValue(reflect.ValueOf(field.Tag.Get(BenodeTag))); err != nil {
 				return err
 			}
-			if vnode, err = newBenode(srcVal.Field(i)); err != nil {
+			if vnode, err = marshalValue(srcVal.Field(i)); err != nil {
 				return err
 			}
 			e.data[knode] = vnode
@@ -257,7 +298,7 @@ func (e *ListNode) EncodeValue(srcVal reflect.Value) (err error) {
 	case reflect.Array, reflect.Slice:
 		e.data = make([]Benode, srcVal.Len())
 		for i := 0; i < srcVal.Len(); i++ {
-			elem, err := newBenode(srcVal.Index(i))
+			elem, err := marshalValue(srcVal.Index(i))
 			if err != nil {
 				return nil
 			}
@@ -433,11 +474,11 @@ func (e *StringNode) Decode(res any) (err error) {
 func readSlice(rd *bufio.Reader, l int) (b []byte, err error) {
 	b = make([]byte, l)
 	var n int
-	if n, err = rd.Read(b); err != nil {
-		return nil, fmt.Errorf("readSlice: %w", bIOErr)
+	if n, err = io.ReadFull(rd, b); err != nil {
+		return nil, fmt.Errorf("readSlice: %w %v", bIOErr, utils.LogSource())
 	}
 	if n < l {
-		return nil, fmt.Errorf("readSlice: EOF")
+		return nil, fmt.Errorf("readSlice: EOF read:%v \n %v", n, utils.LogSource())
 	}
 	return b, nil
 }
@@ -446,7 +487,7 @@ func peekByte(rd *bufio.Reader) (byte, error) {
 	var b []byte
 	var err error
 	if b, err = rd.Peek(1); err != nil {
-		return 0, fmt.Errorf("peakByte: %w", bIOErr)
+		return 0, fmt.Errorf("peakByte: %w %v", bIOErr, utils.LogSource())
 	}
 	return b[0], nil
 }

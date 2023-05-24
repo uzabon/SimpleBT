@@ -2,12 +2,7 @@ package benode
 
 import (
 	"bufio"
-	"bytes"
-	"crypto/sha1"
-	"errors"
 	"fmt"
-	"io"
-	"reflect"
 	"tutorial/bt_demo/utils"
 )
 
@@ -17,11 +12,6 @@ var (
 
 type ParseContext interface {
 	Scan(*bufio.Reader) Benode
-	MustScan(*bufio.Reader) Benode
-	Marshal(any) Benode
-	Unmarshal(*bufio.Reader, ...any)
-	CalSHA(any) [utils.SHALEN]byte
-
 	Err() error
 	Clean()
 }
@@ -30,7 +20,7 @@ type NodeContextImpl struct {
 	err error
 }
 
-func newNodeContext() ParseContext {
+func NewNodeContext() ParseContext {
 	return &NodeContextImpl{}
 }
 
@@ -138,8 +128,8 @@ func (impl *NodeContextImpl) ScanDict(rd *bufio.Reader) *DictNode {
 			_ = impl.readByte(rd)
 			break
 		}
-		keyNode := impl.MustScan(rd)
-		valNode := impl.MustScan(rd)
+		keyNode := impl.Scan(rd)
+		valNode := impl.Scan(rd)
 		data[keyNode] = valNode
 	}
 	return &DictNode{
@@ -165,7 +155,7 @@ func (impl *NodeContextImpl) ScanList(rd *bufio.Reader) *ListNode {
 			_ = impl.readByte(rd)
 			break
 		}
-		nextNode := impl.MustScan(rd)
+		nextNode := impl.Scan(rd)
 		data = append(data, nextNode)
 	}
 	return &ListNode{
@@ -201,58 +191,11 @@ func (impl *NodeContextImpl) Scan(rd *bufio.Reader) (res Benode) {
 	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
 		res = impl.ScanString(rd)
 	default:
-		return nil
+		impl.addErr(fmt.Errorf("Context: not  benode"))
 	}
 	return res
 }
 
 func (impl *NodeContextImpl) Clean() {
 	impl.err = nil
-}
-
-func (impl *NodeContextImpl) MustScan(rd *bufio.Reader) (res Benode) {
-	res = impl.Scan(rd)
-	if res == nil {
-		impl.addErr(fmt.Errorf("Context: not  benode"))
-	}
-	return res
-}
-
-func (impl *NodeContextImpl) Marshal(src any) (res Benode) {
-	if impl.Err() != nil {
-		return nil
-	}
-	res, err := newBenode(reflect.ValueOf(src))
-	if err != nil {
-		impl.addErr(fmt.Errorf("Marshal: %w", err))
-	}
-
-	return res
-}
-
-func (impl *NodeContextImpl) Unmarshal(rd *bufio.Reader, resList ...any) {
-	for i := 0; i < len(resList); i++ {
-		node := impl.MustScan(rd)
-		if impl.Err() != nil {
-			if errors.Is(impl.Err(), io.EOF) {
-				impl.Clean()
-			}
-			break
-		}
-		if err := node.Decode(&resList[i]); err != nil {
-			impl.addErr(fmt.Errorf("Decode: %w", err))
-		}
-	}
-}
-
-func (impl *NodeContextImpl) CalSHA(res any) [utils.SHALEN]byte {
-	if impl.Err() != nil {
-		return [utils.SHALEN]byte{}
-	}
-	var buf bytes.Buffer
-	node := impl.Marshal(res)
-	if err := node.Write(&buf); err != nil {
-		impl.addErr(fmt.Errorf("CalSHA: %w", err))
-	}
-	return sha1.Sum(buf.Bytes())
 }

@@ -16,7 +16,7 @@ func TestDecode(t *testing.T) {
 	buff := `d4:1234i5678eli8909e1:aedi2345e3:abcee`
 
 	rd := bufio.NewReader(strings.NewReader(buff))
-	var res Benode = _testCtx.MustScan(rd)
+	var res Benode = _testCtx.Scan(rd)
 	assert.NotNil(t, res)
 	assert.Nil(t, _testCtx.Err())
 }
@@ -95,24 +95,24 @@ func TestList1(t *testing.T) {
 func TestMarshal(t *testing.T) {
 	{
 		str := `123456`
-		res := _testCtx.Marshal(str)
-		assert.Nil(t, _testCtx.Err())
+		res, err := Marshal(str)
+		assert.Nil(t, err)
 		r, ok := res.(*StringNode)
 		assert.True(t, ok)
 		assert.Equal(t, str, *r.data)
 	}
 	{
 		i := 12345
-		res := _testCtx.Marshal(i)
-		assert.Nil(t, _testCtx.Err())
+		res, err := Marshal(i)
+		assert.Nil(t, err)
 		r, ok := res.(*IntNode)
 		assert.True(t, ok)
 		assert.Equal(t, int64(i), *r.data)
 	}
 	{
 		l := []string{"aaa", "bbb", "ccc"}
-		res := _testCtx.Marshal(l)
-		assert.Nil(t, _testCtx.Err())
+		res, err := Marshal(l)
+		assert.Nil(t, err)
 		r, ok := res.(*ListNode)
 		assert.True(t, ok)
 		assert.Equal(t, len(l), len(r.data))
@@ -123,8 +123,8 @@ func TestMarshal(t *testing.T) {
 			"a": 123,
 			"b": 456,
 		}
-		res := _testCtx.Marshal(d1)
-		assert.Nil(t, _testCtx.Err())
+		res, err := Marshal(d1)
+		assert.Nil(t, err)
 		r, ok := res.(*DictNode)
 		assert.True(t, ok)
 		assert.Equal(t, len(d1), len(r.data))
@@ -138,8 +138,8 @@ func TestMarshal(t *testing.T) {
 			A: 4321,
 			B: []string{"a", "b", "c"},
 		}
-		res := _testCtx.Marshal(d2)
-		assert.Nil(t, _testCtx.Err())
+		res, err := Marshal(d2)
+		assert.Nil(t, err)
 		r, ok := res.(*DictNode)
 		assert.True(t, ok)
 		assert.Equal(t, 2, len(r.data))
