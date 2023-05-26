@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	P ParseContext = &NodeContextImpl{}
+	_ ParseContext = &NodeContextImpl{}
 )
 
 type ParseContext interface {

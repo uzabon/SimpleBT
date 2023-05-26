@@ -475,10 +475,7 @@ func readSlice(rd *bufio.Reader, l int) (b []byte, err error) {
 	b = make([]byte, l)
 	var n int
 	if n, err = io.ReadFull(rd, b); err != nil {
-		return nil, fmt.Errorf("readSlice: %w %v", bIOErr, utils.LogSource())
-	}
-	if n < l {
-		return nil, fmt.Errorf("readSlice: EOF read:%v \n %v", n, utils.LogSource())
+		return nil, fmt.Errorf("readSlice %v: %w %v", n, bIOErr, utils.LogSource())
 	}
 	return b, nil
 }

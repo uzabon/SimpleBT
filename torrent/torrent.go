@@ -3,8 +3,15 @@ package torrent
 import (
 	"bufio"
 	"io"
+	"math/rand"
+	"net/url"
+	"strconv"
 	"tutorial/bt_demo/benode"
 	"tutorial/bt_demo/utils"
+)
+
+const (
+	peerPort = 6667
 )
 
 type RawInfo struct {
@@ -39,7 +46,7 @@ func ParseTorrentFile(rd io.Reader) (tf *TorrentFile, err error) {
 	}
 
 	checkErr(func() {
-		err = benode.Unmarshal(bufio.NewReader(rd), &rf)
+		err = benode.Unmarshal(bufio.NewReader(rd), rf)
 	})
 	checkErr(func() {
 		tf = &TorrentFile{
@@ -64,4 +71,29 @@ func ParseTorrentFile(rd io.Reader) (tf *TorrentFile, err error) {
 	}
 
 	return tf, nil
+}
+
+func buildUrl(tf *TorrentFile) (link string, err error) {
+	var peerId [utils.SHALEN]byte
+	if _, err = rand.Read(peerId[:]); err != nil {
+		return "", err
+	}
+
+	base, err := url.Parse(tf.Announce)
+	if err != nil {
+		return "", err
+	}
+
+	params := url.Values{
+		"info_hash":  []string{string(tf.InfoSHA[:])},
+		"peer_id":    []string{string(peerId[:])},
+		"port":       []string{strconv.Itoa(peerPort)},
+		"uploaded":   []string{"0"},
+		"downloaded": []string{"0"},
+		"compact":    []string{"1"},
+		"left":       []string{strconv.Itoa(tf.FileLen)},
+	}
+
+	base.RawQuery = params.Encode()
+	return base.String(), nil
 }
